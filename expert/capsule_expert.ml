@@ -94,8 +94,8 @@ module Password : sig
   val with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ forkable local unique) @ local once
-    -> 'a @ forkable local unique
+    -> ('k t @ local -> 'a @ forkable local once unique) @ local once
+    -> 'a @ forkable local once unique
     @@ portable
 end = struct
   type 'k t : void mod contended external_ portable unyielding
@@ -202,6 +202,7 @@ module Data = struct
   let inject = unsafe_mk
   let project = unsafe_get
   let[@inline] project_shared ~key:_ t = unsafe_get t
+  let[@inline] project_shared_unique ~key:_ t = unsafe_get_unique t
   let[@inline] bind ~password:_ ~f t = f (unsafe_get t)
   let[@inline] iter ~password:_ ~f t = f (unsafe_get t)
 
@@ -383,7 +384,7 @@ module Key : sig
     @@ portable
 
   val globalize_unique : 'k t @ local unique -> 'k t @ unique @@ portable
-  val destroy : 'k t @ unique -> 'k Access.t @@ portable
+  val destroy : 'k t @ local unique -> 'k Access.t @@ portable
 end = struct
   type 'k t : void mod contended external_ forkable many portable unyielding
   type packed = P : 'k t -> packed [@@unboxed]
@@ -440,8 +441,9 @@ let[@inline] access_local ~password:_ ~f = exclave_
   f c
 ;;
 
-let[@inline] access ~password ~f =
-  (access_local ~password ~f:(fun access -> { global = f access })).global
+let[@inline] access ~password:_ ~f =
+  let c : _ Access.t = Access.unsafe_mk () in
+  f c
 ;;
 
 let[@inline] access_shared_local ~password:_ ~f = exclave_

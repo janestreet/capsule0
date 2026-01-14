@@ -155,8 +155,8 @@ module Password : sig
   val with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ forkable local unique) @ local once
-    -> 'a @ forkable local unique
+    -> ('k t @ local -> 'a @ forkable local once unique) @ local once
+    -> 'a @ forkable local once unique
     @@ portable
 end
 
@@ -180,10 +180,10 @@ module Key : sig
   (** A boxed version of [Key.t] for places where you need a type with layout [value]. *)
   type 'k boxed : value mod contended external_ forkable many portable
 
-  val box : 'k t @ unique -> 'k boxed @ unique
-  val unbox : 'k boxed @ unique -> 'k t @ unique
-  val box_aliased : 'k t -> 'k boxed
-  val unbox_aliased : 'k boxed -> 'k t
+  val box : 'k t @ unique -> 'k boxed @ unique @@ portable
+  val unbox : 'k boxed @ unique -> 'k t @ unique @@ portable
+  val box_aliased : 'k t -> 'k boxed @@ portable
+  val unbox_aliased : 'k boxed -> 'k t @@ portable
 
   (** [with_password k ~f] runs [f], providing it a password for ['k], and returns the
       result of [f] together with the key.
@@ -262,7 +262,7 @@ module Key : sig
 
   (** [destroy k] returns ['k Access.t] for ['k], merging it with the current capsule. The
       key is destroyed. *)
-  val destroy : 'k t @ unique -> 'k Access.t @@ portable
+  val destroy : 'k t @ local unique -> 'k Access.t @@ portable
 
   (** [unsafe_mk ()] unsafely makes a unique key for an arbitrary capsule. *)
   val unsafe_mk : unit -> 'k t @ unique @@ portable
@@ -277,8 +277,8 @@ val create : unit -> Key.packed @ unique @@ portable
 val access
   : ('a : value_or_null) 'k.
   password:'k Password.t @ local
-  -> f:('k Access.t -> 'a @ contended portable) @ local once portable
-  -> 'a @ contended portable
+  -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
+  -> 'a @ contended once portable unique
   @@ portable
 
 (** As [access], but returns a local value. *)
@@ -416,6 +416,11 @@ module Data : sig
   val project_shared
     : ('a : value mod portable) 'k.
     key:'k Key.t -> ('a, 'k) t -> 'a @ shared
+    @@ portable
+
+  val project_shared_unique
+    : ('a : value mod portable) 'k.
+    key:'k Key.t -> ('a, 'k) t @ unique -> 'a @ shared unique
     @@ portable
 
   (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)
@@ -752,7 +757,7 @@ module Data : sig
         with a [key @ aliased global], the contents can be returned at [shared]. *)
     val project_shared
       : ('a : value mod portable) 'k.
-      key:'k Key.t -> ('a, 'k) t @ local -> 'a @ local shared
+      key:'k Key.t @ local -> ('a, 'k) t @ local -> 'a @ local shared
       @@ portable
 
     (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)
