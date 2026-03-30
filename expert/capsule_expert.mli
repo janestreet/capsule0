@@ -77,15 +77,15 @@ val current : unit -> Access.packed
 type initial
 
 (** An [Access.t] for the initial capsule *)
-val initial : initial Access.boxed
+val initial : initial Access.t
 
-(** [access_initial ~f] calls [f (This initial)] if run on the initial thread, or [f Null]
-    otherwise. *)
-val access_initial : (initial Access.boxed option -> 'a) -> 'a
-
-(** [access_initial_domain ~f] calls [f (This initial)] if run on the initial domain, or
-    [f Null] otherwise. *)
-val access_initial_domain : (initial Access.boxed option -> 'a) -> 'a
+(** Returns whether the current domain is the initial domain. Does *not* guarantee that
+    the current capsule is the initial capsule. *)
+val is_initial_domain : unit -> bool
+[@@alert
+  maybe_still_concurrent
+    "Being on the initial domain does not provide any guarantees about thread-safety. \
+     This fact should only be used to avoid contention."]
 
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig
