@@ -77,23 +77,24 @@ val current : unit -> Access.packed @@ portable
 type initial
 
 (** An [Access.t] for the initial capsule *)
-val initial : initial Access.boxed
+val initial : initial Access.t
 
-(** [access_initial ~f] calls [f (This initial)] if run on the initial thread, or [f Null]
-    otherwise. *)
-val access_initial
-  :  (initial Access.boxed option @ local -> 'a @ contended local portable unique)
-     @ local once portable unyielding
-  -> 'a @ contended local portable unique
-  @@ portable
+val is_initial_thread : unit -> bool @@ portable
+[@@ocaml.doc
+  {| Returns whether the current thread is the initial thread. Does *not* guarantee that
+      the current capsule is the initial capsule. |}]
+[@@alert
+  maybe_still_concurrent
+    "Being on the initial thread does not provide any guarantees about thread-safety. \
+     This fact should only be used to avoid contention."]
 
-(** [access_initial_domain ~f] calls [f (This initial)] if run on the initial domain, or
-    [f Null] otherwise. *)
-val access_initial_domain
-  :  (initial Access.boxed option @ local -> 'a @ contended local portable unique)
-     @ local once portable unyielding
-  -> 'a @ contended local portable unique
-  @@ portable
+(** Returns whether the current domain is the initial domain. Does *not* guarantee that
+    the current capsule is the initial capsule. *)
+val is_initial_domain : unit -> bool @@ portable
+[@@alert
+  maybe_still_concurrent
+    "Being on the initial domain does not provide any guarantees about thread-safety. \
+     This fact should only be used to avoid contention."]
 
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig

@@ -38,7 +38,7 @@ let[@inline] current () = Access.P (Access.unsafe_mk ())
 
 type initial
 
-let initial = Access.(box (unsafe_mk ()))
+let initial = Access.(unsafe_mk ())
 
 module TLS = Basement.Stdlib_shim.Domain.Safe.TLS
 
@@ -48,18 +48,12 @@ let initial_key =
   key
 ;;
 
-let access_initial f = exclave_
-  if TLS.get initial_key then f (Some Access.(box (unsafe_mk ()))) else f None
-;;
+let is_initial_thread () = TLS.get initial_key
 
-let access_initial_domain =
+let is_initial_domain =
   if Basement.Stdlib_shim.runtime5 ()
-  then
-    fun [@inline] f -> exclave_
-    if Stdlib.Domain.is_main_domain ()
-    then f (Some Access.(box (unsafe_mk ())))
-    else f None
-  else fun [@inline] f -> exclave_ f (Some Access.(box (unsafe_mk ())))
+  then Stdlib.Domain.is_main_domain
+  else fun () -> true
 ;;
 
 module Password : sig
