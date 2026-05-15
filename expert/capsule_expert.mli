@@ -1,3 +1,5 @@
+open Basement.Or_null_shim.Export
+
 (** Capsules are a mechanism for safely having [uncontended] access to mutable data from
     multiple threads. The interface in this module ensures that only one thread can have
     [uncontended] access to that data at a time.
@@ -31,17 +33,7 @@
 
     This module only provides interfaces that statically rule out data races. The [Await]
     library augments capsules with various synchronization primitives that prevent races
-    at runtime.
-
-    {1 Exceptions}
-
-    Currently, it is possible to break the soundness guarantees of the capsule API by
-    defining an exception which contains mutable state or nonportable functions, and
-    "smuggling" values out of a capsule by raising that exception out of one of the
-    callbacks in this module. In the medium-term, we plan to distinguish portable
-    exception constructors, whose contents cross portability and contention, from
-    nonportable exception constructors. In the meantime we are consciously leaving this
-    soundness gap for the sake of improved ergonomics over encapsulating exceptions. *)
+    at runtime. *)
 
 (** An [Access.t] allows wrapping and unwrapping [Data.t] values from the current capsule. *)
 module Access : sig
@@ -284,12 +276,25 @@ module Data : sig
       result of [f]. *)
   val create_unique : (unit -> 'a) -> ('a, 'k) t
 
+  (** [aliased t] wraps the value inside an aliased [Data.t] in [Modes.Aliased.t], making
+      it cross [aliased].
+
+      This is useful for if you need a [Capsule.Data.t @ unique], but want the value it
+      points to to be [aliased]. *)
+  external aliased
+    :  ('a, 'k) t
+    -> ('a Basement.Stdlib_shim.Modes.Aliased.t, 'k) t
+    = "%identity"
+
   (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
       returns a pointer to the result. *)
   val map : password:'k Password.t -> f:('a -> 'b) -> ('a, 'k) t -> ('b, 'k) t
 
   (** [both t1 t2] is a pointer to a pair of the values of [t1] and [t2]. *)
   val both : ('a, 'k) t -> ('b, 'k) t -> ('a * 'b, 'k) t
+
+  (** Like [both], but for [unique] values *)
+  val both_unique : ('a, 'k) t -> ('b, 'k) t -> ('a * 'b, 'k) t
 
   (** [fst t] gives a pointer to the first value inside [t] *)
   val fst : ('a * 'b, 'k) t -> ('a, 'k) t
@@ -565,7 +570,8 @@ module Data : sig
 
     (** [create f] runs [f] within the capsule ['k] and returns a pointer to the result of
         [f]. *)
-    val create : 'a 'k. (unit -> 'a) -> ('a, 'k) t
+    val%template create : 'a 'k. (unit -> 'a) -> ('a, 'k) t
+    [@@mode u = (aliased, unique)]
 
     (** [project t] returns the value of [t]. The result is within ['k], so is marked
         [contended]. The value is required to always be [portable], so unlike [extract],
@@ -573,4 +579,7 @@ module Data : sig
         accesses to the value happen only after it's marked [contended]. *)
     val project : 'a 'k. ('a, 'k) t -> 'a
   end
+
+  val%template unwrap_or_null : ('a or_null, 'k) Or_null.t -> ('a, 'k) t or_null
+  [@@mode u = (aliased, unique)]
 end

@@ -1,3 +1,5 @@
+open Basement.Or_null_shim.Export
+
 type 'a global = { global : 'a } [@@unboxed]
 
 module Access : sig
@@ -133,6 +135,12 @@ module Data = struct
   let[@inline] create f = unsafe_mk (f ())
   let[@inline] create_once f = unsafe_mk_once (f ())
   let[@inline] create_unique f = unsafe_mk_unique (f ())
+
+  external aliased
+    :  ('a, 'k) t
+    -> ('a Basement.Stdlib_shim.Modes.Aliased.t, 'k) t
+    = "%identity"
+
   let[@inline] map ~password:_ ~f t = unsafe_mk (f (unsafe_get t))
 
   let[@inline] fst t =
@@ -146,6 +154,11 @@ module Data = struct
   ;;
 
   let[@inline] both t1 t2 = unsafe_mk (unsafe_get t1, unsafe_get t2)
+
+  let[@inline] both_unique t1 t2 =
+    unsafe_mk_unique (unsafe_get_unique t1, unsafe_get_unique t2)
+  ;;
+
   let[@inline] extract ~password:_ ~f t = f (unsafe_get t)
   let inject = unsafe_mk
   let project = unsafe_get
@@ -246,7 +259,11 @@ module Data = struct
   module Or_null = struct
     type ('a, 'k) t
 
-    external unsafe_mk : 'a 'k. ('a[@local_opt]) -> (('a, 'k) t[@local_opt]) = "%identity"
+    external%template unsafe_mk
+      : 'a 'k.
+      ('a[@local_opt]) -> (('a, 'k) t[@local_opt])
+      = "%identity"
+    [@@mode u = (aliased, unique)]
 
     external unsafe_get
       : 'a 'k.
@@ -255,9 +272,19 @@ module Data = struct
 
     let[@inline] wrap ~access:_ t = unsafe_mk t
     let[@inline] unwrap ~access:_ t = unsafe_get t
-    let[@inline] create f = unsafe_mk (f ())
+
+    let%template[@inline] create f = (unsafe_mk [@mode u]) (f ())
+    [@@mode u = (aliased, unique)]
+    ;;
+
     let project = unsafe_get
   end
+
+  external%template unwrap_or_null
+    :  ('a or_null, 'k) Or_null.t
+    -> ('a, 'k) t or_null
+    = "%identity"
+  [@@mode u = (aliased, unique)]
 end
 
 module Key : sig
