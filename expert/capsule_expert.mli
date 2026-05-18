@@ -1,3 +1,5 @@
+open Basement.Or_null_shim.Export
+
 (** Capsules are a mechanism for safely having [uncontended] access to mutable data from
     multiple threads. The interface in this module ensures that only one thread can have
     [uncontended] access to that data at a time.
@@ -31,17 +33,7 @@
 
     This module only provides interfaces that statically rule out data races. The [Await]
     library augments capsules with various synchronization primitives that prevent races
-    at runtime.
-
-    {1 Exceptions}
-
-    Currently, it is possible to break the soundness guarantees of the capsule API by
-    defining an exception which contains mutable state or nonportable functions, and
-    "smuggling" values out of a capsule by raising that exception out of one of the
-    callbacks in this module. In the medium-term, we plan to distinguish portable
-    exception constructors, whose contents cross portability and contention, from
-    nonportable exception constructors. In the meantime we are consciously leaving this
-    soundness gap for the sake of improved ergonomics over encapsulating exceptions. *)
+    at runtime. *)
 
 (** An [Access.t] allows wrapping and unwrapping [Data.t] values from the current capsule. *)
 module Access : sig
@@ -210,7 +202,9 @@ module Key : sig
       returns the result of [f]. *)
   val with_password_shared
     : ('a : value_or_null) 'k.
-    'k t -> f:('k Password.Shared.t @ local -> 'a @ unique) @ local once -> 'a @ unique
+    'k t @ local
+    -> f:('k Password.Shared.t @ forkable local -> 'a @ unique) @ local once
+    -> 'a @ unique
     @@ portable
 
   (** As [with_password_shared], but returns a local value. *)
@@ -374,6 +368,17 @@ module Data : sig
     -> ('a, 'k) t @ unique
     @@ portable
 
+  (** [aliased t] wraps the value inside an aliased [Data.t] in [Modes.Aliased.t], making
+      it cross [aliased].
+
+      This is useful for if you need a [Capsule.Data.t @ unique], but want the value it
+      points to to be [aliased]. *)
+  external aliased
+    :  ('a, 'k) t @ aliased
+    -> ('a Basement.Stdlib_shim.Modes.Aliased.t, 'k) t
+    @@ portable
+    = "%identity"
+
   (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
       returns a pointer to the result. *)
   val map
@@ -386,11 +391,21 @@ module Data : sig
   (** [both t1 t2] is a pointer to a pair of the values of [t1] and [t2]. *)
   val both : ('a, 'k) t -> ('b, 'k) t -> ('a * 'b, 'k) t @@ portable
 
+  (** Like [both], but for [unique] values *)
+  val both_unique
+    :  ('a, 'k) t @ unique
+    -> ('b, 'k) t @ unique
+    -> ('a * 'b, 'k) t @ unique
+    @@ portable
+
   (** [fst t] gives a pointer to the first value inside [t] *)
   val fst : ('a * 'b, 'k) t -> ('a, 'k) t @@ portable
 
   (** [snd t] gives a pointer to the second value inside [t] *)
   val snd : ('a * 'b, 'k) t -> ('b, 'k) t @@ portable
+
+  val idx : ('a, 'k) t -> ('a, 'b) idx_imm -> ('b, 'k) t @@ portable
+  [@@ocaml.doc {| [idx t i] is a pointer to the value at [i] in [t]. |}]
 
   (** [extract ~password ~f t] applies [f] to the value of [t] within the capsule ['k] and
       returns the result. The result is within ['k] so must be [portable] and is marked
@@ -507,6 +522,9 @@ module Data : sig
     (** [snd t] gives a pointer to the second value inside [t] *)
     val snd : ('a * 'b, 'k) t -> ('b, 'k) t @@ portable
 
+    val idx : ('a, 'k) t -> ('a, 'b) idx_imm -> ('b, 'k) t @@ portable
+    [@@ocaml.doc {| [idx t i] is a pointer to the value at [i] in [t]. |}]
+
     (** [extract ~password ~f t] applies [f] to the value of [t] within the sub-capsule of
         ['k] and returns the result. The result has access to ['k] so must be [portable]
         and is marked [contended]. *)
@@ -598,6 +616,9 @@ module Data : sig
 
       (** [snd t] gives a pointer to the second value inside [t] *)
       val snd : ('a * 'b, 'k) t @ local -> ('b, 'k) t @ local @@ portable
+
+      val idx : ('a, 'k) t @ local -> ('a, 'b) idx_imm -> ('b, 'k) t @ local @@ portable
+      [@@ocaml.doc {| [idx t i] is a pointer to the value at [i] in [t]. |}]
 
       (** [extract ~pasword ~f t] applies [f] to the value of [t] within the sub-capsule
           of ['k] and returns the result. The result has access to ['k] so must be
@@ -728,6 +749,9 @@ module Data : sig
     (** [snd t] gives a pointer to the second value inside [t] *)
     val snd : ('a * 'b, 'k) t @ local -> ('b, 'k) t @ local @@ portable
 
+    val idx : ('a, 'k) t @ local -> ('a, 'b) idx_imm -> ('b, 'k) t @ local @@ portable
+    [@@ocaml.doc {| [idx t i] is a pointer to the value at [i] in [t]. |}]
+
     (** [extract ~password ~f t] applies [f] to the value of [t] within the capsule ['k]
         and returns the result. The result is within ['k] so must be [portable] and is
         marked [contended]. *)
@@ -821,10 +845,11 @@ module Data : sig
 
     (** [create f] runs [f] within the capsule ['k] and returns a pointer to the result of
         [f]. *)
-    val create
+    val%template create
       : ('a : value_or_null) 'k.
-      (unit -> 'a) @ local once portable -> ('a, 'k) t
+      (unit -> 'a @ u) @ local once portable -> ('a, 'k) t @ u
       @@ portable
+    [@@mode u = (aliased, unique)]
 
     (** [project t] returns the value of [t]. The result is within ['k], so is marked
         [contended]. The value is required to always be [portable], so unlike [extract],
@@ -835,4 +860,10 @@ module Data : sig
       ('a, 'k) t -> 'a @ contended
       @@ portable
   end
+
+  val%template unwrap_or_null
+    :  ('a or_null, 'k) Or_null.t @ u
+    -> ('a, 'k) t or_null @ u
+    @@ portable
+  [@@mode u = (aliased, unique)]
 end

@@ -1,3 +1,5 @@
+open Basement.Or_null_shim.Export
+
 type ('a : value_or_null) global : value_or_null = { global : 'a @@ aliased global }
 [@@unboxed]
 
@@ -80,7 +82,7 @@ module Password : sig
       @@ portable
 
     (* Can break the soundness of the API. *)
-    val unsafe_mk : unit -> 'k t @ local @@ portable
+    val unsafe_mk : unit -> 'k t @ forkable local @@ portable
   end
 
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
@@ -179,6 +181,13 @@ module Data = struct
   let[@inline] create f = unsafe_mk (f ())
   let[@inline] create_once f = unsafe_mk_once (f ())
   let[@inline] create_unique f = unsafe_mk_unique (f ())
+
+  external aliased
+    :  ('a, 'k) t
+    -> ('a Basement.Stdlib_shim.Modes.Aliased.t, 'k) t
+    @@ portable
+    = "%identity"
+
   let[@inline] map ~password:_ ~f t = unsafe_mk (f (unsafe_get t))
 
   let[@inline] fst t =
@@ -191,7 +200,21 @@ module Data = struct
     unsafe_mk t2
   ;;
 
+  [@@@warning "-incompatible-with-upstream"]
+
+  external idx
+    :  ('a, 'k) t
+    -> (('a, 'b) idx_imm[@unboxed])
+    -> ('b, 'k) t
+    @@ portable
+    = "%get_idx"
+
   let[@inline] both t1 t2 = unsafe_mk (unsafe_get t1, unsafe_get t2)
+
+  let[@inline] both_unique t1 t2 =
+    unsafe_mk_unique (unsafe_get_unique t1, unsafe_get_unique t2)
+  ;;
+
   let[@inline] extract ~password:_ ~f t = f (unsafe_get t)
   let inject = unsafe_mk
   let project = unsafe_get
@@ -221,6 +244,15 @@ module Data = struct
       unsafe_mk y
     ;;
 
+    [@@@warning "-incompatible-with-upstream"]
+
+    external idx
+      :  ('a, 'k) t
+      -> (('a, 'b) idx_imm[@unboxed])
+      -> ('b, 'k) t
+      @@ portable
+      = "%get_idx"
+
     let[@inline] extract ~password:_ ~f t = f (unsafe_get t)
     let[@inline] inject v = unsafe_mk v
     let[@inline] project t = unsafe_get t
@@ -244,6 +276,15 @@ module Data = struct
         let _, y = unsafe_get t in
         unsafe_mk y
       ;;
+
+      [@@@warning "-incompatible-with-upstream"]
+
+      external idx
+        :  (('a, 'k) t[@local_opt])
+        -> (('a, 'b) idx_imm[@unboxed])
+        -> (('b, 'k) t[@local_opt])
+        @@ portable
+        = "%get_idx"
 
       let[@inline] extract ~password:_ ~f t = exclave_ f (unsafe_get t)
       let[@inline] inject v = exclave_ unsafe_mk v
@@ -278,6 +319,15 @@ module Data = struct
       unsafe_mk t2
     ;;
 
+    [@@@warning "-incompatible-with-upstream"]
+
+    external idx
+      :  ('a, 'k) t @ local
+      -> (('a, 'b) idx_imm[@unboxed])
+      -> ('b, 'k) t @ local
+      @@ portable
+      = "%get_idx"
+
     let[@inline] both t1 t2 = exclave_ unsafe_mk (unsafe_get t1, unsafe_get t2)
     let[@inline] extract ~password:_ ~f t = exclave_ f (unsafe_get t)
     let[@inline] inject v = exclave_ unsafe_mk v
@@ -295,11 +345,12 @@ module Data = struct
          t :
          value_or_null mod everything with 'a @@ contended portable
 
-    external unsafe_mk
+    external%template unsafe_mk
       : ('a : value_or_null) 'k.
-      ('a[@local_opt]) -> (('a, 'k) t[@local_opt])
+      ('a[@local_opt]) @ u -> (('a, 'k) t[@local_opt]) @ u
       @@ portable
       = "%identity"
+    [@@mode u = (aliased, unique)]
 
     external unsafe_get
       : ('a : value_or_null) 'k.
@@ -309,9 +360,20 @@ module Data = struct
 
     let[@inline] wrap ~access:_ t = unsafe_mk t
     let[@inline] unwrap ~access:_ t = unsafe_get t
-    let[@inline] create f = unsafe_mk (f ())
+
+    let%template[@inline] create f = (unsafe_mk [@mode u]) (f ())
+    [@@mode u = (aliased, unique)]
+    ;;
+
     let project = unsafe_get
   end
+
+  external%template unwrap_or_null
+    :  ('a or_null, 'k) Or_null.t @ u
+    -> ('a, 'k) t or_null @ u
+    @@ portable
+    = "%identity"
+  [@@mode u = (aliased, unique)]
 end
 
 module Key : sig
@@ -339,7 +401,9 @@ module Key : sig
 
   val with_password_shared
     : ('a : value_or_null) 'k.
-    'k t -> f:('k Password.Shared.t @ local -> 'a @ unique) @ local once -> 'a @ unique
+    'k t @ local
+    -> f:('k Password.Shared.t @ forkable local -> 'a @ unique) @ local once
+    -> 'a @ unique
     @@ portable
 
   val with_password_shared_local
