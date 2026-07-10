@@ -77,7 +77,9 @@ module Password : sig
   end
 
   val shared : 'k t -> 'k Shared.t
-  val with_current : 'a 'k. 'k Access.t -> ('k t -> 'a) -> 'a
+
+  val%template with_current : 'a 'k. 'k Access.t -> ('k t -> 'a) -> 'a
+  [@@mode l = (local, global)]
 end = struct
   type 'k t [@@immediate]
   type 'k boxed = unit
@@ -100,7 +102,10 @@ end = struct
 
   external shared : 'k t -> 'k Shared.t = "%identity"
 
-  let[@inline] with_current _ f = f (unsafe_mk ()) [@nontail]
+  let%template[@inline] with_current _ f =
+    f (unsafe_mk ()) [@exclave_if_local l ~reasons:[ May_return_local ]] [@nontail]
+  [@@mode l = (local, global)]
+  ;;
 end
 
 module Data = struct
@@ -233,6 +238,7 @@ module Data = struct
     let[@inline] unwrap_once ~access:_ t = unsafe_get_once t
     let[@inline] unwrap_shared ~access:_ t = unsafe_get t
     let[@inline] create f = unsafe_mk (f ())
+    let[@inline] create_unique f = unsafe_mk_unique (f ())
     let[@inline] map ~password:_ ~f t = unsafe_mk (f (unsafe_get t))
 
     let[@inline] fst t =
@@ -301,10 +307,13 @@ module Key : sig
   val with_password_local : 'a 'k. 'k t -> f:('k Password.t -> 'a) -> 'a
   val with_password_shared : 'a 'k. 'k t -> f:('k Password.Shared.t -> 'a) -> 'a
   val with_password_shared_local : 'a 'k. 'k t -> f:('k Password.Shared.t -> 'a) -> 'a
+
+  [%%template:
+  [@@@mode.default l = (local, global)]
+
   val access : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a * 'k t
-  val access_local : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a * 'k t
-  val access_shared : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a
-  val access_shared_local : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a
+  val access_shared : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a]
+
   val globalize_unique : 'k t -> 'k t
   val destroy : 'k t -> 'k Access.t
 end = struct
@@ -339,18 +348,18 @@ end = struct
     f password
   ;;
 
-  let[@inline] access k ~f = f (Access.unsafe_mk ()), k
-  let[@inline] access_local k ~f = f (Access.unsafe_mk ()), k
+  [%%template
+  [@@@mode.default l = (local, global)]
+
+  let[@inline] access k ~f =
+    (f (Access.unsafe_mk ()), k) [@exclave_if_local l ~reasons:[ May_return_local ]]
+  ;;
 
   let[@inline] access_shared _ ~f =
-    let c : 'k Access.t = Access.unsafe_mk () in
-    f c
-  ;;
-
-  let[@inline] access_shared_local _ ~f =
-    let c : 'k Access.t = Access.unsafe_mk () in
-    f c
-  ;;
+    (let c : 'k Access.t = Access.unsafe_mk () in
+     f c)
+    [@exclave_if_local l ~reasons:[ May_return_local ]]
+  ;;]
 
   let[@inline] globalize_unique _ = unsafe_mk ()
   let[@inline] destroy _ = Access.unsafe_mk ()

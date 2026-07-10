@@ -1,5 +1,9 @@
 open Basement.Or_null_shim.Export
 
+(*_ NOTE: This is a low-level library for the implementation of capsules. Consider using
+    [Capsule] (which is reexported by [Core]) instead, which is the intended entry-point
+    for general users. *)
+
 (** Capsules are a mechanism for safely having [uncontended] access to mutable data from
     multiple threads. The interface in this module ensures that only one thread can have
     [uncontended] access to that data at a time.
@@ -131,7 +135,8 @@ module Password : sig
   (** [with_current k f] calls [f] with a password for the current capsule [k].
 
       Note [f] cannot return the [unforkable] password, as the result is [forkable]. *)
-  val with_current : 'a 'k. 'k Access.t -> ('k t -> 'a) -> 'a
+  val%template with_current : 'a 'k. 'k Access.t -> ('k t -> 'a) -> 'a
+  [@@mode l = (local, global)]
 end
 
 (** Keys represent the ownership of the capsule. *)
@@ -178,6 +183,9 @@ module Key : sig
   (** As [with_password_shared], but returns a local value. *)
   val with_password_shared_local : 'a 'k. 'k t -> f:('k Password.Shared.t -> 'a) -> 'a
 
+  [%%template:
+  [@@@mode.default l = (local, global)]
+
   (** [access k ~f] runs [f], providing it access to the capsule ['k], and returns the
       result of [f] together with the key.
 
@@ -185,15 +193,9 @@ module Key : sig
       capsule, and the exception is reraised. *)
   val access : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a * 'k t
 
-  (** As [access], but local. *)
-  val access_local : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a * 'k t
-
   (** [access_shared k ~f] runs [f], providing it a shared access to ['k], and returns the
       result of [f]. Exceptions raised from [f] are re-raised. *)
-  val access_shared : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a
-
-  (** As [access_shared], but returns a local value. *)
-  val access_shared_local : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a
+  val access_shared : 'a 'k. 'k t -> f:('k Access.t -> 'a) -> 'a]
 
   (** [globalize_unique k] promotes a local unique key to a global one. *)
   val globalize_unique : 'k t -> 'k t
@@ -502,6 +504,10 @@ module Data : sig
     (** [create f] runs [f] within the capsule ['k] and returns a local pointer to the
         result of [f]. *)
     val create : (unit -> 'a) -> ('a, 'k) t
+
+    (** [create_unique f] runs [f] within the capsule ['k] and returns a pointer to the
+        result of [f]. *)
+    val create_unique : (unit -> 'a) -> ('a, 'k) t
 
     (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
         returns a local pointer to the result. *)

@@ -1,4 +1,4 @@
-module Capsule = Capsule_expert
+module Capsule = Capsule_prim
 
 let yield = (Basement.Blocking_sync.yield [@alert "-deprecated"])
 
