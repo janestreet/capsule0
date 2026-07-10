@@ -14,10 +14,14 @@ depends: [
   "ocaml" {>= "5.1.0"}
   "basement"
   "ppx_template"
+  "sexp_type"
   "dune"         {>= "3.17.0"}
 ]
 available: arch != "x86_32"
-synopsis: "The expert capsule api for the OxCaml mode ecosystem"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
+synopsis: "The primitive capsule api for the OxCaml mode ecosystem"
 description: "
 Part of Jane Street's Core library
 The capsule api provides a safe interface for partitioning mutable data into shareable

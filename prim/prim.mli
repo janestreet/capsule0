@@ -1,5 +1,9 @@
 open Basement.Or_null_shim.Export
 
+(*_ NOTE: This is a low-level library for the implementation of capsules. Consider using
+    [Capsule] (which is reexported by [Core]) instead, which is the intended entry-point
+    for general users. *)
+
 (** Capsules are a mechanism for safely having [uncontended] access to mutable data from
     multiple threads. The interface in this module ensures that only one thread can have
     [uncontended] access to that data at a time.
@@ -145,12 +149,13 @@ module Password : sig
   (** [with_current k f] calls [f] with a password for the current capsule [k].
 
       Note [f] cannot return the [unforkable] password, as the result is [forkable]. *)
-  val with_current
+  val%template with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ forkable local once unique) @ local once
-    -> 'a @ forkable local once unique
+    -> ('k t @ local -> 'a @ forkable l once unique) @ local once
+    -> 'a @ forkable l once unique
     @@ portable
+  [@@mode l = (local, global)]
 end
 
 (** Keys represent the ownership of the capsule. *)
@@ -213,6 +218,9 @@ module Key : sig
     'k t -> f:('k Password.Shared.t @ local -> 'a @ local) @ local once -> 'a @ local
     @@ portable
 
+  [%%template:
+  [@@@mode.default l = (local, global)]
+
   (** [access k ~f] runs [f], providing it access to the capsule ['k], and returns the
       result of [f] together with the key.
 
@@ -221,16 +229,8 @@ module Key : sig
   val access
     : ('a : value_or_null) 'k.
     'k t @ unique
-    -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
-    -> #('a * 'k t) @ contended once portable unique
-    @@ portable
-
-  (** As [access], but local. *)
-  val access_local
-    : ('a : value_or_null) 'k.
-    'k t @ unique
-    -> f:('k Access.t -> 'a @ contended local once portable unique) @ local once portable
-    -> #('a * 'k t) @ contended local once portable unique
+    -> f:('k Access.t -> 'a @ contended l once portable unique) @ local once portable
+    -> #('a * 'k t) @ contended l once portable unique
     @@ portable
 
   (** [access_shared k ~f] runs [f], providing it a shared access to ['k], and returns the
@@ -238,19 +238,10 @@ module Key : sig
   val access_shared
     : ('a : value_or_null) 'k.
     'k t
-    -> f:('k Access.t @ shared -> 'a @ contended once portable unique)
+    -> f:('k Access.t @ shared -> 'a @ contended l once portable unique)
        @ local once portable
-    -> 'a @ contended once portable unique
-    @@ portable
-
-  (** As [access_shared], but returns a local value. *)
-  val access_shared_local
-    : ('a : value_or_null) 'k.
-    'k t
-    -> f:('k Access.t @ shared -> 'a @ contended local once portable unique)
-       @ local once portable
-    -> 'a @ contended local once portable unique
-    @@ portable
+    -> 'a @ contended l once portable unique
+    @@ portable]
 
   (** [globalize_unique k] promotes a local unique key to a global one. *)
   val globalize_unique : 'k t @ local unique -> 'k t @ unique @@ portable
@@ -725,6 +716,13 @@ module Data : sig
     val create
       :  (unit -> 'a @ local) @ local once portable
       -> ('a, 'k) t @ local
+      @@ portable
+
+    (** [create_unique f] runs [f] within the capsule ['k] and returns a pointer to the
+        result of [f]. *)
+    val create_unique
+      :  (unit -> 'a @ local unique) @ local once portable
+      -> ('a, 'k) t @ local unique
       @@ portable
 
     (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and

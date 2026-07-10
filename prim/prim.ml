@@ -87,12 +87,13 @@ module Password : sig
 
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
 
-  val with_current
+  val%template with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ forkable local once unique) @ local once
-    -> 'a @ forkable local once unique
+    -> ('k t @ local -> 'a @ forkable l once unique) @ local once
+    -> 'a @ forkable l once unique
     @@ portable
+  [@@mode l = (local, global)]
 end = struct
   type 'k t : void mod contended external_ portable unyielding
   type 'k boxed = unit
@@ -115,7 +116,10 @@ end = struct
 
   external shared : 'k t @ local -> 'k Shared.t @ local @@ portable = "%identity"
 
-  let[@inline] with_current _ f = exclave_ f (unsafe_mk ()) [@nontail]
+  let%template[@inline] with_current _ f =
+    f (unsafe_mk ()) [@exclave_if_local l ~reasons:[ May_return_local ]] [@nontail]
+  [@@mode l = (local, global)]
+  ;;
 end
 
 module Data = struct
@@ -307,6 +311,7 @@ module Data = struct
     let[@inline] unwrap_once ~access:_ t = exclave_ unsafe_get_once t
     let[@inline] unwrap_shared ~access:_ t = exclave_ unsafe_get t
     let[@inline] create f = exclave_ unsafe_mk (f ())
+    let[@inline] create_unique f = exclave_ unsafe_mk_unique (f ())
     let[@inline] map ~password:_ ~f t = exclave_ unsafe_mk (f (unsafe_get t))
 
     let[@inline] fst t = exclave_
@@ -411,35 +416,23 @@ module Key : sig
     'k t -> f:('k Password.Shared.t @ local -> 'a @ local) @ local once -> 'a @ local
     @@ portable
 
+  [%%template:
+  [@@@mode.default l = (local, global)]
+
   val access
     : ('a : value_or_null) 'k.
     'k t @ unique
-    -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
-    -> #('a * 'k t) @ contended once portable unique
-    @@ portable
-
-  val access_local
-    : ('a : value_or_null) 'k.
-    'k t @ unique
-    -> f:('k Access.t -> 'a @ contended local once portable unique) @ local once portable
-    -> #('a * 'k t) @ contended local once portable unique
+    -> f:('k Access.t -> 'a @ contended l once portable unique) @ local once portable
+    -> #('a * 'k t) @ contended l once portable unique
     @@ portable
 
   val access_shared
     : ('a : value_or_null) 'k.
     'k t
-    -> f:('k Access.t @ shared -> 'a @ contended once portable unique)
+    -> f:('k Access.t @ shared -> 'a @ contended l once portable unique)
        @ local once portable
-    -> 'a @ contended once portable unique
-    @@ portable
-
-  val access_shared_local
-    : ('a : value_or_null) 'k.
-    'k t
-    -> f:('k Access.t @ shared -> 'a @ contended local once portable unique)
-       @ local once portable
-    -> 'a @ contended local once portable unique
-    @@ portable
+    -> 'a @ contended l once portable unique
+    @@ portable]
 
   val globalize_unique : 'k t @ local unique -> 'k t @ unique @@ portable
   val destroy : 'k t @ local unique -> 'k Access.t @@ portable
@@ -475,18 +468,18 @@ end = struct
     f password
   ;;
 
-  let[@inline] access k ~f = #(f (Access.unsafe_mk ()), k)
-  let[@inline] access_local k ~f = exclave_ #(f (Access.unsafe_mk ()), k)
+  [%%template
+  [@@@mode.default l = (local, global)]
+
+  let[@inline] access k ~f =
+    #(f (Access.unsafe_mk ()), k) [@exclave_if_local l ~reasons:[ May_return_local ]]
+  ;;
 
   let[@inline] access_shared _ ~f =
-    let c : 'k Access.t = Access.unsafe_mk () in
-    f c
-  ;;
-
-  let[@inline] access_shared_local _ ~f =
-    let c : 'k Access.t = Access.unsafe_mk () in
-    exclave_ f c
-  ;;
+    (let c : 'k Access.t = Access.unsafe_mk () in
+     f c)
+    [@exclave_if_local l ~reasons:[ May_return_local ]]
+  ;;]
 
   let[@inline] globalize_unique _ = unsafe_mk ()
   let[@inline] destroy _ = Access.unsafe_mk ()

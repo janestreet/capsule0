@@ -2,7 +2,7 @@
 
 [@@@alert deprecated "Use synchronization primitives from [Await]."]
 
-module Capsule := Capsule_expert
+module Capsule := Capsule_prim
 
 (** Blocking versions of synchronization primitives
 
